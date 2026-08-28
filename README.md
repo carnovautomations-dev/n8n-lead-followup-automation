@@ -63,3 +63,4 @@ To use the workflow, you need to configure your own:
 ## Demo
 
 Built as a personal automation project to demonstrate workflow design, API/webhook logic, data handling, and follow-up automation with n8n.
+DEMO LOOM:https://www.loom.com/share/840bb2c9bed74a3f997cb12147657eaf
