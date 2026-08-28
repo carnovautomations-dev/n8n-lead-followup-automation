@@ -1,0 +1,703 @@
+{
+  "name": "Lead Follow-Up Machine Demo",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "Lead Follow-Up Machine\n\nReusable demo workflow for businesses that want to respond to new leads quickly, save them, notify the sales team, and follow up automatically when the lead is still marked as New.",
+        "height": 220,
+        "width": 360,
+        "color": 5
+      },
+      "id": "a921a379-2f10-4574-aecc-3f44f50bfffa",
+      "name": "Workflow Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -672,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "content": "1. Lead Capture\n\nA website form, landing page, CRM, ad platform, or no-code form sends a POST request to this webhook.",
+        "height": 180,
+        "width": 300,
+        "color": 4
+      },
+      "id": "22eae271-54f0-46e9-befd-2014b2e6db03",
+      "name": "Note - Lead Capture",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-follow-up-machine",
+        "options": {}
+      },
+      "id": "337ae3fd-4371-4cc1-be7c-10cbc96559bf",
+      "name": "Webhook - New Lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -272,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "content": "2. Clean, Format, Score\n\nThis Code node makes the workflow reusable. Missing fields are safely converted to empty values, names are formatted, timestamps are added, and a simple lead score is calculated.",
+        "height": 200,
+        "width": 360,
+        "color": 6
+      },
+      "id": "918f1659-4ccc-4188-825f-b0217979af15",
+      "name": "Note - Data Normalization",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        32,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const source = items[0]?.json?.body ?? items[0]?.json ?? {};\n\nconst cleanText = (value) => {\n  if (value === undefined || value === null) return '';\n  return String(value).trim().replace(/\\s+/g, ' ');\n};\n\nconst titleCaseName = (value) => {\n  const cleaned = cleanText(value).toLowerCase();\n  if (!cleaned) return '';\n  return cleaned.replace(/\\b\\w/g, (char) => char.toUpperCase());\n};\n\nconst parseBudget = (value) => {\n  const cleaned = cleanText(value).replace(/[^0-9.,-]/g, '').replace(',', '.');\n  const parsed = Number.parseFloat(cleaned);\n  return Number.isFinite(parsed) ? parsed : 0;\n};\n\nconst firstName = titleCaseName(source.first_name);\nconst lastName = titleCaseName(source.last_name);\nconst fullName = [firstName, lastName].filter(Boolean).join(' ') || 'Unknown Lead';\nconst email = cleanText(source.email).toLowerCase();\nconst phone = cleanText(source.phone);\nconst company = cleanText(source.company);\nconst serviceInterest = cleanText(source.service_interest) || 'your request';\nconst budget = cleanText(source.budget);\nconst budgetNumber = parseBudget(budget);\nconst message = cleanText(source.message);\nconst leadSource = cleanText(source.source) || 'Unknown Source';\n\nlet leadScore = 0;\nif (phone) leadScore += 30;\nif (budgetNumber > 3000) leadScore += 30;\nif (message.length > 30) leadScore += 20;\nif (email) leadScore += 20;\n\nconst lead = {\n  first_name: firstName,\n  last_name: lastName,\n  full_name: fullName,\n  email,\n  phone,\n  company,\n  service_interest: serviceInterest,\n  budget,\n  message,\n  source: leadSource,\n  created_at: new Date().toISOString(),\n  lead_status: 'New',\n  lead_score: leadScore,\n  budget_number: budgetNumber\n};\n\nreturn [{ json: lead }];"
+      },
+      "id": "d7a01e73-875c-418e-94a2-ee78db2a454c",
+      "name": "Code - Clean and Score Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "content": "3. Save Lead\n\nAppend every normalized lead to Google Sheets. Use columns with the same names as the fields in this workflow.",
+        "height": 180,
+        "width": 320,
+        "color": 3
+      },
+      "id": "bffe8f7e-9620-4ce3-9503-0892b7b6719f",
+      "name": "Note - Save to Sheet",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        352,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "first_name": "={{ $json.first_name }}",
+            "last_name": "={{ $json.last_name }}",
+            "full_name": "={{ $json.full_name }}",
+            "email": "={{ $json.email }}",
+            "phone": "={{ $json.phone }}",
+            "company": "={{ $json.company }}",
+            "service_interest": "={{ $json.service_interest }}",
+            "budget": "={{ $json.budget }}",
+            "message": "={{ $json.message }}",
+            "source": "={{ $json.source }}",
+            "created_at": "={{ $json.created_at }}",
+            "lead_status": "={{ $json.lead_status }}",
+            "lead_score": "={{ $json.lead_score }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "first_name",
+              "displayName": "first_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_name",
+              "displayName": "last_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "full_name",
+              "displayName": "full_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "service_interest",
+              "displayName": "service_interest",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "budget",
+              "displayName": "budget",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_status",
+              "displayName": "lead_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_score",
+              "displayName": "lead_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "4f03e589-9a40-4665-8a89-7b44d4faab26",
+      "name": "Google Sheets - Save Lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        400,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "content": "4. Instant Response and Sales Alert\n\nThe lead receives an email immediately. The sales team receives a Slack alert with the important details and score.",
+        "height": 180,
+        "width": 360,
+        "color": 5
+      },
+      "id": "16f9bcef-2a97-4018-99fd-b03072fa0e6e",
+      "name": "Note - Instant Response",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        736,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Code - Clean and Score Lead').item.json.email }}",
+        "subject": "=Thanks for reaching out, {{ $('Code - Clean and Score Lead').item.json.first_name || 'there' }}",
+        "emailType": "text",
+        "message": "=Hi {{ $('Code - Clean and Score Lead').item.json.first_name || 'there' }},\n\nThanks for your interest in {{ $('Code - Clean and Score Lead').item.json.service_interest }}.\n\nWe received your request and someone from our team will get back to you shortly.\n\nHere is what we received:\nName: {{ $('Code - Clean and Score Lead').item.json.full_name }}\nEmail: {{ $('Code - Clean and Score Lead').item.json.email }}\nPhone: {{ $('Code - Clean and Score Lead').item.json.phone }}\nService requested: {{ $('Code - Clean and Score Lead').item.json.service_interest }}\nMessage: {{ $('Code - Clean and Score Lead').item.json.message }}\n\nBest regards,\nThe Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "890ba07e-526e-4425-ade4-c6e6d05aac55",
+      "name": "Gmail - Send Instant Email to Lead",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        752,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#your-sales-channel",
+          "mode": "name"
+        },
+        "text": "=New lead received\n\nName: {{ $('Code - Clean and Score Lead').item.json.full_name }}\nEmail: {{ $('Code - Clean and Score Lead').item.json.email }}\nPhone: {{ $('Code - Clean and Score Lead').item.json.phone }}\nCompany: {{ $('Code - Clean and Score Lead').item.json.company }}\nInterest: {{ $('Code - Clean and Score Lead').item.json.service_interest }}\nBudget: {{ $('Code - Clean and Score Lead').item.json.budget }}\nSource: {{ $('Code - Clean and Score Lead').item.json.source }}\nLead Score: {{ $('Code - Clean and Score Lead').item.json.lead_score }}\nStatus: {{ $('Code - Clean and Score Lead').item.json.lead_status }}",
+        "otherOptions": {}
+      },
+      "id": "8c7141bc-6c81-467e-a82c-37d1451cf19f",
+      "name": "Slack - Notify Sales Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        752,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "content": "5. Follow-Up Logic\n\nAfter each wait, the workflow checks Google Sheets. If lead_status is still New, it sends the next follow-up. If the team has changed the status, the follow-up stops.",
+        "height": 220,
+        "width": 380,
+        "color": 4
+      },
+      "id": "8b2a8be0-c1fa-4caa-857b-b66ed6fab18e",
+      "name": "Note - Follow-Up Logic",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1072,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 24,
+        "unit": "hours"
+      },
+      "id": "3e115bf4-5dbe-40be-9bf4-d576c5c65011",
+      "name": "Wait - 24 Hours",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1072,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "email",
+              "lookupValue": "={{ $('Code - Clean and Score Lead').item.json.email }}"
+            }
+          ]
+        },
+        "options": {
+          "returnFirstMatch": true
+        }
+      },
+      "id": "92354da1-9b9c-403e-a899-af08461e6970",
+      "name": "Google Sheets - Check Status After 24h",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1376,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cf7f3445-b4c3-4f0d-8e3e-8bc7fb31e014",
+              "leftValue": "={{ $json.lead_status }}",
+              "rightValue": "New",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "768f7a06-09cc-4e74-8d11-6b3dfe3921ed",
+      "name": "IF - Lead Still New After 24h?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1680,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Code - Clean and Score Lead').item.json.email }}",
+        "subject": "=Still interested in {{ $('Code - Clean and Score Lead').item.json.service_interest }}?",
+        "emailType": "text",
+        "message": "=Hi {{ $('Code - Clean and Score Lead').item.json.first_name || 'there' }},\n\nJust following up on your request about {{ $('Code - Clean and Score Lead').item.json.service_interest }}.\n\nWould you like to schedule a quick call so we can understand your needs and help you better?\n\nBest regards,\nThe Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "4be86cfc-0985-4a4f-a4cb-5ed0bee63d6d",
+      "name": "Gmail - Send Follow-Up Email 1",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1968,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 72,
+        "unit": "hours"
+      },
+      "id": "5c19d0b1-763e-4c8b-ba34-89799bc11638",
+      "name": "Wait - 72 Hours",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2272,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "email",
+              "lookupValue": "={{ $('Code - Clean and Score Lead').item.json.email }}"
+            }
+          ]
+        },
+        "options": {
+          "returnFirstMatch": true
+        }
+      },
+      "id": "ae46689f-486d-47c5-a99e-84f5514fcef3",
+      "name": "Google Sheets - Check Status After 72h",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2576,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "759390d7-6754-44dc-b37c-1a510802d019",
+              "leftValue": "={{ $json.lead_status }}",
+              "rightValue": "New",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "771e062c-f5a4-4219-a87b-2cbad2382678",
+      "name": "IF - Lead Still New After 72h?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2880,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Code - Clean and Score Lead').item.json.email }}",
+        "subject": "Should we close your request?",
+        "emailType": "text",
+        "message": "=Hi {{ $('Code - Clean and Score Lead').item.json.first_name || 'there' }},\n\nWe tried to follow up regarding your request about {{ $('Code - Clean and Score Lead').item.json.service_interest }}.\n\nIf you are still interested, just reply to this email and we will be happy to help.\n\nBest regards,\nThe Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "aa6794a4-8c55-48a0-a77b-db6772dfe3b8",
+      "name": "Gmail - Send Follow-Up Email 2",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3168,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#your-sales-channel",
+          "mode": "name"
+        },
+        "text": "=Final follow-up sent for lead still marked as New\n\nName: {{ $('Code - Clean and Score Lead').item.json.full_name }}\nEmail: {{ $('Code - Clean and Score Lead').item.json.email }}\nPhone: {{ $('Code - Clean and Score Lead').item.json.phone }}\nCompany: {{ $('Code - Clean and Score Lead').item.json.company }}\nInterest: {{ $('Code - Clean and Score Lead').item.json.service_interest }}\nBudget: {{ $('Code - Clean and Score Lead').item.json.budget }}\nSource: {{ $('Code - Clean and Score Lead').item.json.source }}\nLead Score: {{ $('Code - Clean and Score Lead').item.json.lead_score }}\nStatus: New\n\nSuggested action: Call or manually review this lead.",
+        "otherOptions": {}
+      },
+      "id": "f0cbe8c6-5ea6-4792-873f-d22eb466f2a9",
+      "name": "Slack - Final Sales Reminder",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        3472,
+        512
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - New Lead": {
+      "main": [
+        [
+          {
+            "node": "Code - Clean and Score Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Clean and Score Lead": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Save Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Save Lead": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Send Instant Email to Lead",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slack - Notify Sales Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Send Instant Email to Lead": {
+      "main": [
+        [
+          {
+            "node": "Wait - 24 Hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - 24 Hours": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Check Status After 24h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Check Status After 24h": {
+      "main": [
+        [
+          {
+            "node": "IF - Lead Still New After 24h?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Lead Still New After 24h?": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Send Follow-Up Email 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Send Follow-Up Email 1": {
+      "main": [
+        [
+          {
+            "node": "Wait - 72 Hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - 72 Hours": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Check Status After 72h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Check Status After 72h": {
+      "main": [
+        [
+          {
+            "node": "IF - Lead Still New After 72h?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Lead Still New After 72h?": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Send Follow-Up Email 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Send Follow-Up Email 2": {
+      "main": [
+        [
+          {
+            "node": "Slack - Final Sales Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": [
+    {
+      "name": "Lead Follow-Up"
+    },
+    {
+      "name": "Reusable Demo"
+    }
+  ]
+}
