@@ -1,0 +1,60 @@
+{
+  "name": "Error Alert -> Slack",
+  "nodes": [
+    {
+      "id": "54b8c850-65fe-4718-b7ea-48505a398c29",
+      "name": "Errore in un workflow",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "15174d09-e45d-4c99-9a19-b5b082dc7e5e",
+      "name": "Slack - Errore workflow",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.7,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "=⚠️ Errore nel workflow: {{ $json.workflow.name }}\nNodo: {{ $json.execution.lastNodeExecuted }}\nMessaggio: {{ $json.execution.error.message }}\nEsecuzione: {{ $json.execution.url }}"
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Errore in un workflow": {
+      "main": [
+        [
+          {
+            "node": "Slack - Errore workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,814 @@
+{
+  "name": "Lead Follow-Up - Infissi (IT) v2",
+  "nodes": [
+    {
+      "id": "a76f498a-0d6f-4fbe-b0ef-60b2eb1430d6",
+      "name": "Nuovo lead (webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        288
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-infissi",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "id": "007c3b21-9eea-4d14-a1e4-51201d2a3ee6",
+      "name": "Pulisci e valuta lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        288
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ---- CONFIG: adatta soglie e campi al tuo settore ----\nconst CONFIG = {\n  budgetMin: 5500,       // budget considerato \"serio\" (modificabile)\n  serramentiMin: 4,      // n. infissi che rende il lavoro interessante\n  hotThreshold: 70       // punteggio da cui il lead e' \"Alta\" priorita'\n};\n\nconst src = items[0]?.json?.body ?? items[0]?.json ?? {};\nconst clean = (v) => (v === undefined || v === null) ? '' : String(v).trim().replace(/\\s+/g, ' ');\nconst titleCase = (v) => clean(v).toLowerCase().replace(/(^|[\\s'’-])(\\S)/g, (m, a, b) => a + b.toUpperCase());\n\n// Legge importi all'italiana: \"3.500\", \"3.500,50\", \"3500\", \"3,5k\", \"€ 10.000\"\nfunction parseBudget(v) {\n  let s = clean(v).toLowerCase();\n  const mult = /k\\s*$/.test(s) ? 1000 : 1;\n  s = s.replace(/[^0-9.,]/g, '');\n  if (!s) return 0;\n  const hasDot = s.includes('.');\n  const hasComma = s.includes(',');\n  if (hasDot && hasComma) s = s.replace(/\\./g, '').replace(',', '.');\n  else if (hasComma) s = s.replace(',', '.');\n  else if (hasDot && /^\\d{1,3}(\\.\\d{3})+$/.test(s)) s = s.replace(/\\./g, '');\n  const n = parseFloat(s);\n  return Number.isFinite(n) ? n * mult : 0;\n}\n\nconst nome = titleCase(src.nome ?? src.first_name);\nconst cognome = titleCase(src.cognome ?? src.last_name);\nconst email = clean(src.email).toLowerCase();\nconst telefono = clean(src.telefono ?? src.phone);\nconst comune = titleCase(src.comune ?? src.city);\nconst tipo = clean(src.tipo_intervento ?? src.service_interest) || 'infissi';\nconst nInfissi = parseInt(clean(src.numero_infissi ?? src.windows_count), 10) || 0;\nconst budget = clean(src.budget);\nconst budgetNumero = parseBudget(budget);\nconst messaggio = clean(src.messaggio ?? src.message);\nconst fonte = clean(src.fonte ?? src.source) || 'Sito web';\n\nconst emailValida = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(email);\nconst telefonoValido = telefono.replace(/\\D/g, '').length >= 8;\n\nlet punteggio = 0;\nif (telefonoValido) punteggio += 25;\nif (emailValida) punteggio += 15;\nif (budgetNumero >= CONFIG.budgetMin) punteggio += 25;\nif (nInfissi >= CONFIG.serramentiMin) punteggio += 20;\nif (messaggio.length > 30) punteggio += 15;\n\nconst lead_id = 'L' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();\n\nreturn [{ json: {\n  lead_id,\n  created_at: new Date().toISOString(),\n  nome, cognome,\n  nome_completo: [nome, cognome].filter(Boolean).join(' ') || 'Contatto senza nome',\n  email, telefono, comune,\n  tipo_intervento: tipo,\n  numero_infissi: nInfissi || '',\n  budget, budget_numero: budgetNumero,\n  messaggio, fonte,\n  punteggio,\n  priorita: punteggio >= CONFIG.hotThreshold ? 'Alta' : 'Normale',\n  stato: 'Nuovo',\n  email_valida: emailValida\n} }];\n"
+      }
+    },
+    {
+      "id": "17a0d060-269c-4a1d-bf02-6a125826909f",
+      "name": "Email valida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        288
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.email_valida }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "bcf01c2d-d94e-4476-861e-5bfc65fed654",
+      "name": "Salva lead su Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        192
+      ],
+      "parameters": {
+        "resource": "record",
+        "operation": "create",
+        "authentication": "airtableTokenApi",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_AIRTABLE_TABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "value": {
+            "Lead": "={{ $json.nome_completo }}",
+            "Stato": "={{ $json.stato }}",
+            "Priorita": "={{ $json.priorita }}",
+            "Punteggio": "={{ $json.punteggio }}",
+            "Email": "={{ $json.email }}",
+            "Telefono": "={{ $json.telefono }}",
+            "Comune": "={{ $json.comune }}",
+            "Tipo intervento": "={{ $json.tipo_intervento }}",
+            "N. infissi": "={{ $json.numero_infissi }}",
+            "Budget": "={{ $json.budget }}",
+            "Budget numero": "={{ $json.budget_numero }}",
+            "Messaggio": "={{ $json.messaggio }}",
+            "Fonte": "={{ $json.fonte }}"
+          }
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "id": "f183b97d-ec7a-4702-b94a-d6b62dfadfb0",
+      "name": "Risposta OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, lead_id: $(\"Salva lead su Airtable\").first().json.id }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "bfd6cf1c-bbb5-46d6-8d92-e5031947e8b8",
+      "name": "Priorita alta?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        192
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Pulisci e valuta lead').item.json.priorita }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "Alta"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "71c82349-2c75-4445-b49d-ef1056e3fa69",
+      "name": "Slack - LEAD PRIORITARIO",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.7,
+      "position": [
+        1120,
+        96
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "=🔥 LEAD PRIORITARIO\nNome: {{ $('Pulisci e valuta lead').item.json.nome_completo }}\nTelefono: {{ $('Pulisci e valuta lead').item.json.telefono }}\nEmail: {{ $('Pulisci e valuta lead').item.json.email }}\nComune: {{ $('Pulisci e valuta lead').item.json.comune }}\nIntervento: {{ $('Pulisci e valuta lead').item.json.tipo_intervento }} - N. infissi: {{ $('Pulisci e valuta lead').item.json.numero_infissi }}\nBudget: {{ $('Pulisci e valuta lead').item.json.budget }}\nPunteggio: {{ $('Pulisci e valuta lead').item.json.punteggio }}\nMessaggio: {{ $('Pulisci e valuta lead').item.json.messaggio }}\n\nDopo il contatto imposta 'Stato' = Contattato su Airtable per fermare i follow-up automatici."
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "",
+          "name": "Slack account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "5780ec1c-6842-494a-8240-fb07e6d6db9c",
+      "name": "Slack - Nuovo lead",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.7,
+      "position": [
+        1120,
+        288
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "=Nuovo lead\nNome: {{ $('Pulisci e valuta lead').item.json.nome_completo }}\nTelefono: {{ $('Pulisci e valuta lead').item.json.telefono }}\nEmail: {{ $('Pulisci e valuta lead').item.json.email }}\nComune: {{ $('Pulisci e valuta lead').item.json.comune }}\nIntervento: {{ $('Pulisci e valuta lead').item.json.tipo_intervento }} - N. infissi: {{ $('Pulisci e valuta lead').item.json.numero_infissi }}\nBudget: {{ $('Pulisci e valuta lead').item.json.budget }}\nPunteggio: {{ $('Pulisci e valuta lead').item.json.punteggio }}\nMessaggio: {{ $('Pulisci e valuta lead').item.json.messaggio }}\n\nDopo il contatto imposta 'Stato' = Contattato su Airtable per fermare i follow-up automatici."
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "",
+          "name": "Slack account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "681e3bfd-2cc1-4060-a524-bbcb214c6d53",
+      "name": "Email - Conferma al lead",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        896,
+        480
+      ],
+      "parameters": {
+        "resource": "email",
+        "operation": "send",
+        "fromEmail": "[Nome Azienda] <YOUR_SENDER@YOUR_DOMAIN>",
+        "toEmail": "={{ $('Pulisci e valuta lead').item.json.email }}",
+        "subject": "Abbiamo ricevuto la tua richiesta",
+        "emailFormat": "text",
+        "text": "=Buongiorno {{ $('Pulisci e valuta lead').item.json.nome || '' }},\n\nabbiamo ricevuto la tua richiesta per: {{ $('Pulisci e valuta lead').item.json.tipo_intervento }}.\n\nUn nostro consulente ti contattera' a breve per fissare un sopralluogo gratuito.\n\nSe preferisci non essere ricontattato, rispondi a questa email con la parola STOP.\nCordiali saluti,\nIl team di [Nome Azienda]",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "smtp": {
+          "id": "",
+          "name": "SMTP account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "11fa4ef1-b6ff-402c-a699-225cb24952c4",
+      "name": "Attendi 24 ore",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        480
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 24,
+        "unit": "hours"
+      }
+    },
+    {
+      "id": "197e55b9-111a-4cfa-97be-35dc039ce9c7",
+      "name": "Rileggi lead (24h)",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        480
+      ],
+      "parameters": {
+        "resource": "record",
+        "operation": "get",
+        "authentication": "airtableTokenApi",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_AIRTABLE_TABLE_ID"
+        },
+        "id": "={{ $('Salva lead su Airtable').first().json.id }}"
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "id": "dc2929b5-003e-4377-9212-d7548387917f",
+      "name": "Ancora Nuovo? (24h)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1568,
+        480
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.fields.Stato }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "Nuovo"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "d5b6f857-c3ad-443c-adbe-ac44e5dbdbb9",
+      "name": "Email - Follow-up 1",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1792,
+        480
+      ],
+      "parameters": {
+        "resource": "email",
+        "operation": "send",
+        "fromEmail": "[Nome Azienda] <YOUR_SENDER@YOUR_DOMAIN>",
+        "toEmail": "={{ $('Pulisci e valuta lead').item.json.email }}",
+        "subject": "Hai ancora bisogno di un preventivo?",
+        "emailFormat": "text",
+        "text": "=Buongiorno {{ $('Pulisci e valuta lead').item.json.nome || '' }},\n\nti scriviamo per la tua richiesta su {{ $('Pulisci e valuta lead').item.json.tipo_intervento }}.\n\nVuoi che fissiamo un sopralluogo gratuito? Basta rispondere a questa email con il giorno che preferisci.\n\nSe preferisci non essere ricontattato, rispondi a questa email con la parola STOP.\nCordiali saluti,\nIl team di [Nome Azienda]",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "smtp": {
+          "id": "",
+          "name": "SMTP account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "389bc92b-015f-49c7-9ce0-a55eb06fb2ab",
+      "name": "Segna follow-up 1",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        2016,
+        480
+      ],
+      "parameters": {
+        "resource": "record",
+        "operation": "update",
+        "authentication": "airtableTokenApi",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_AIRTABLE_TABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "id"
+          ],
+          "value": {
+            "id": "={{ $('Salva lead su Airtable').first().json.id }}",
+            "Follow-up 1 inviato": true
+          }
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "id": "706cb1a3-0b1b-4e4e-a860-9c43fbb0abf4",
+      "name": "Attendi altre 48 ore",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2240,
+        480
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 48,
+        "unit": "hours"
+      }
+    },
+    {
+      "id": "98d3f175-5e55-460f-b8dc-63da4091b556",
+      "name": "Rileggi lead (72h)",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        2464,
+        480
+      ],
+      "parameters": {
+        "resource": "record",
+        "operation": "get",
+        "authentication": "airtableTokenApi",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_AIRTABLE_TABLE_ID"
+        },
+        "id": "={{ $('Salva lead su Airtable').first().json.id }}"
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "id": "92a8f646-57ff-4672-b953-558fe29ee39d",
+      "name": "Ancora Nuovo? (72h)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2688,
+        480
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.fields.Stato }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "Nuovo"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "55157d82-ea54-473d-a65d-9b87554d54e4",
+      "name": "Email - Follow-up 2",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2912,
+        480
+      ],
+      "parameters": {
+        "resource": "email",
+        "operation": "send",
+        "fromEmail": "[Nome Azienda] <YOUR_SENDER@YOUR_DOMAIN>",
+        "toEmail": "={{ $('Pulisci e valuta lead').item.json.email }}",
+        "subject": "Ultimo promemoria sulla tua richiesta",
+        "emailFormat": "text",
+        "text": "=Buongiorno {{ $('Pulisci e valuta lead').item.json.nome || '' }},\n\nabbiamo provato a ricontattarti per la tua richiesta su {{ $('Pulisci e valuta lead').item.json.tipo_intervento }}.\n\nSe sei ancora interessato rispondi a questa email e ti richiamiamo noi.\n\nSe preferisci non essere ricontattato, rispondi a questa email con la parola STOP.\nCordiali saluti,\nIl team di [Nome Azienda]",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "smtp": {
+          "id": "",
+          "name": "SMTP account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b7713f0c-f625-4f2f-bfb4-9ef9b6308a07",
+      "name": "Segna follow-up 2",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        3136,
+        480
+      ],
+      "parameters": {
+        "resource": "record",
+        "operation": "update",
+        "authentication": "airtableTokenApi",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_AIRTABLE_TABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "id"
+          ],
+          "value": {
+            "id": "={{ $('Salva lead su Airtable').first().json.id }}",
+            "Follow-up 2 inviato": true
+          }
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "id": "d4c5547a-1472-4192-b22a-2ce35902314e",
+      "name": "Slack - Promemoria finale",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.7,
+      "position": [
+        3360,
+        480
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "=⏰ Lead senza risposta dopo 72 ore: {{ $('Pulisci e valuta lead').item.json.nome_completo }} ({{ $('Pulisci e valuta lead').item.json.telefono }}). Chiamalo tu."
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "",
+          "name": "Slack account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "165332d7-902b-4300-b3f2-1bc3e60fa08e",
+      "name": "Risposta 422 email non valida",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        384
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"ok\":false,\"error\":\"Email non valida\"}",
+        "options": {
+          "responseCode": 422
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Nuovo lead (webhook)": {
+      "main": [
+        [
+          {
+            "node": "Pulisci e valuta lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pulisci e valuta lead": {
+      "main": [
+        [
+          {
+            "node": "Email valida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email valida?": {
+      "main": [
+        [
+          {
+            "node": "Salva lead su Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Risposta 422 email non valida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salva lead su Airtable": {
+      "main": [
+        [
+          {
+            "node": "Risposta OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Priorita alta?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email - Conferma al lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Priorita alta?": {
+      "main": [
+        [
+          {
+            "node": "Slack - LEAD PRIORITARIO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack - Nuovo lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email - Conferma al lead": {
+      "main": [
+        [
+          {
+            "node": "Attendi 24 ore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attendi 24 ore": {
+      "main": [
+        [
+          {
+            "node": "Rileggi lead (24h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rileggi lead (24h)": {
+      "main": [
+        [
+          {
+            "node": "Ancora Nuovo? (24h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ancora Nuovo? (24h)": {
+      "main": [
+        [
+          {
+            "node": "Email - Follow-up 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email - Follow-up 1": {
+      "main": [
+        [
+          {
+            "node": "Segna follow-up 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Segna follow-up 1": {
+      "main": [
+        [
+          {
+            "node": "Attendi altre 48 ore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attendi altre 48 ore": {
+      "main": [
+        [
+          {
+            "node": "Rileggi lead (72h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rileggi lead (72h)": {
+      "main": [
+        [
+          {
+            "node": "Ancora Nuovo? (72h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ancora Nuovo? (72h)": {
+      "main": [
+        [
+          {
+            "node": "Email - Follow-up 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email - Follow-up 2": {
+      "main": [
+        [
+          {
+            "node": "Segna follow-up 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Segna follow-up 2": {
+      "main": [
+        [
+          {
+            "node": "Slack - Promemoria finale",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
