@@ -1,5 +1,27 @@
 # Lead Follow-Up Automation for Window & Door Installers (n8n)
 
+> **This repo is v1**, the open-source starting point (Airtable + Slack + email).
+> The version I install for clients today (v2) is described below. Its code is not public.
+
+## Production version (v2)
+
+v2 is built around how installers actually work: they live on their phone, not in a CRM.
+
+- **Every lead source in one place**: website forms, trade-show stand forms (Google Forms / Tally) and **voice notes**. The salesperson records a voice message after a visit and the lead is created from it.
+- **Telegram as the interface**: each new lead arrives as a card in a Telegram group, with buttons to change its status (contacted, quote sent, won, lost) and schedule a reminder. One topic per client company.
+- **Automatic follow-ups by email** for web and stand leads, which stop as soon as someone changes the status.
+- **Reminders and morning summary**: the team gets the list of leads to call today.
+- **PostgreSQL** on a self-hosted server, with **NocoDB** as a password-protected table view for each client, and nightly backups.
+- **Modular per client**: one shared system with a configuration record per client (which sources, which modules are on), not a copy of the workflow for each one.
+
+Self-hosted n8n on a Hetzner VPS (Docker, Caddy, HTTPS). Secrets live in environment variables, not inside workflows.
+
+Want a demo? [ty@cautomations.com](mailto:ty@cautomations.com)
+
+---
+
+# v1: open-source workflow (this repo)
+
 Every new lead from your website form gets an instant confirmation email, your sales team gets a Slack alert, and if nobody has contacted the lead after 24 and 72 hours, automatic follow-ups go out. No lead falls through the cracks.
 
 ## The problem
