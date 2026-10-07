@@ -8,9 +8,9 @@
 v2 is built around how installers actually work: they live on their phone, not in a CRM.
 
 - **Every lead source in one place**: website forms, trade-show stand forms (Google Forms / Tally) and **voice notes**. The salesperson records a voice message after a visit and the lead is created from it.
-- **Telegram as the interface**: each new lead arrives as a card in a Telegram group, with buttons to change its status (contacted, quote sent, won, lost) and schedule a reminder. One topic per client company.
+- **Telegram as the interface**: each new lead arrives as a card in a Telegram group, with buttons to change its status (contacted, site visit booked, quote sent, on hold, won, lost). One topic per client company: send a voice note or a text in the lead's thread and the AI updates the record.
 - **Automatic follow-ups by email** for web and stand leads, which stop as soon as someone changes the status.
-- **Reminders and morning summary**: the team gets the list of leads to call today.
+- **AI reply reading**: customer replies to the emails are read by AI. STOP blocks further emails, every other reply is forwarded to the right Telegram topic.
 - **PostgreSQL** on a self-hosted server, with **NocoDB** as a password-protected table view for each client, and nightly backups.
 - **Modular per client**: one shared system with a configuration record per client (which sources, which modules are on), not a copy of the workflow for each one.
 
